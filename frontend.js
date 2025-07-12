@@ -3,7 +3,11 @@ window.addEventListener("keypress", onKeyPress, true);
 
 var iframes = document.getElementsByTagName("iframe");
 for (var i = 0; i < iframes.length; i++) {
-    iframes[i].contentDocument.addEventListener("keypress", onKeyPress, false);
+    try {
+        iframes[i].contentDocument.addEventListener("keypress", onKeyPress, false);
+    } catch (e) {
+        // Ignore cross-origin iframe access errors
+    }
 }
 
 function onKeyPress(event) {
@@ -11,16 +15,16 @@ function onKeyPress(event) {
         // Only remap key when in enabled mode and input is alphabet.
         if (response.enabled && isConvertible(event.which)) {
             var target = event.target;
-            var currentVal = $(target).getString();
-            var posRes = $(target).getPosition();
+            var currentVal = getString(target);
+            var posRes = getPosition(target);
             var position = posRes.htmlPos;
             var res = toMongolianCyrillic(event.which, currentVal.slice(position - 2, position - 1));
             if (!res.removePrev) {
-                $(target).setString(currentVal.slice(0, position - 1) + res.converted + currentVal.slice(position));
-                $(target).setPosition(posRes.pos);
+                setString(target, currentVal.slice(0, position - 1) + res.converted + currentVal.slice(position));
+                setPosition(target, posRes.pos);
             } else {
-                $(target).setString(currentVal.slice(0, position - 2) + res.converted + currentVal.slice(position));
-                $(target).setPosition(posRes.pos - 1);
+                setString(target, currentVal.slice(0, position - 2) + res.converted + currentVal.slice(position));
+                setPosition(target, posRes.pos - 1);
             }
         }
     });
@@ -58,55 +62,59 @@ function positionInHtml(textPos, html) {
     }
 }
 
-$.fn.extend({
-    getString: function() {
-        var target = this[0];
-        var isContentEditable = target.contentEditable === "true";
-        return this[isContentEditable? 'html' : 'val']();
-    },
-
-    setString: function(str) {
-        var target = this[0];
-        var isContentEditable = target.contentEditable === "true";
-        this[isContentEditable? 'html' : 'val'](str);
-    },
-
-    /* Gets cursor position of target, ref: jquery/caret */
-    getPosition: function() {
-        var target = this[0];
-        if (target.selectionStart) {
-            //textArea
-            return {
-                pos: target.selectionStart,
-                htmlPos: target.selectionStart
-            };
-        } else {
-            //contentEditable
-            target.focus();
-            var range1 = window.getSelection().getRangeAt(0),
-                range2 = range1.cloneRange();
-            range2.selectNodeContents(target);
-            range2.setEnd(range1.endContainer, range1.endOffset);
-            return {
-                pos: range2.toString().length,
-                htmlPos: positionInHtml(range2.toString().length, this.getString())
-            };
-        }
-    },
-
-    /* Sets cursor position of target */
-    setPosition: function(pos) {
-        var target = this[0];
-        target.focus();
-        if (target.setSelectionRange) {
-            //textArea
-            target.setSelectionRange(pos, pos);
-        } else {
-            //contentEditable
-            setPositionRecursive(target, pos);
-        }
+/* Gets the string value from target element */
+function getString(target) {
+    var isContentEditable = target.contentEditable === "true";
+    if (isContentEditable) {
+        return target.innerHTML;
+    } else {
+        return target.value || "";
     }
-});
+}
+
+/* Sets the string value to target element */
+function setString(target, str) {
+    var isContentEditable = target.contentEditable === "true";
+    if (isContentEditable) {
+        target.innerHTML = str;
+    } else {
+        target.value = str;
+    }
+}
+
+/* Gets cursor position of target, ref: jquery/caret */
+function getPosition(target) {
+    if (target.selectionStart !== undefined) {
+        //textArea
+        return {
+            pos: target.selectionStart,
+            htmlPos: target.selectionStart
+        };
+    } else {
+        //contentEditable
+        target.focus();
+        var range1 = window.getSelection().getRangeAt(0),
+            range2 = range1.cloneRange();
+        range2.selectNodeContents(target);
+        range2.setEnd(range1.endContainer, range1.endOffset);
+        return {
+            pos: range2.toString().length,
+            htmlPos: positionInHtml(range2.toString().length, getString(target))
+        };
+    }
+}
+
+/* Sets cursor position of target */
+function setPosition(target, pos) {
+    target.focus();
+    if (target.setSelectionRange) {
+        //textArea
+        target.setSelectionRange(pos, pos);
+    } else {
+        //contentEditable
+        setPositionRecursive(target, pos);
+    }
+}
 
 /* A hacky method for setting cursor position correctly. */
 function setPositionRecursive(node, pos) {
